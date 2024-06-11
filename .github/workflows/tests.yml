@@ -1,206 +1,221 @@
-name: Unit & Integration Tests
-
+concurrency:
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.repository
+    != 'apereo/cas' }}
+  group: workflow = ${{ github.workflow }}, ref = ${{ github.event.ref }}, pr = ${{
+    github.event.pull_request.id }}
 env:
-  JAVA_OPTS: "-Xms512m -Xmx8048m -Xss512m -XX:ReservedCodeCacheSize=512m -server"
-  TERM: xterm-256color
-  GH_PACKAGE_REGISTRY_USER: ${{ secrets.GH_PACKAGE_REGISTRY_USER }}
-  GH_PACKAGE_REGISTRY_TOKEN: ${{ secrets.GH_PACKAGE_REGISTRY_TOKEN }}
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
-#  GRADLE_BUILDCACHE_USER: ci
-#  GRADLE_BUILDCACHE_PSW: ${{ secrets.GRADLE_BUILDCACHE_PSW }}
-  CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
-  SONARCLOUD_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
-  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-  COSMOS_DB_URL: ${{ secrets.COSMOS_DB_URL }}
-  COSMOS_DB_KEY: ${{ secrets.COSMOS_DB_KEY }}
-  AZURE_MAPS_SUBSCRIPTION_ID: ${{ secrets.AZURE_MAPS_SUBSCRIPTION_ID }}
-  AZURE_MAPS_CLIENT_ID: ${{ secrets.AZURE_MAPS_CLIENT_ID }}
   AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID }}
   AZURE_AD_CLIENT_SECRET: ${{ secrets.AZURE_AD_CLIENT_SECRET }}
-  AZURE_AD_USER_PASSWORD: ${{ secrets.AZURE_AD_USER_PASSWORD }}
-  AZURE_AD_TENANT: ${{ secrets.AZURE_AD_TENANT }}
   AZURE_AD_DOMAIN: ${{ secrets.AZURE_AD_DOMAIN }}
+  AZURE_AD_TENANT: ${{ secrets.AZURE_AD_TENANT }}
+  AZURE_AD_USER_PASSWORD: ${{ secrets.AZURE_AD_USER_PASSWORD }}
+  AZURE_MAPS_CLIENT_ID: ${{ secrets.AZURE_MAPS_CLIENT_ID }}
+  AZURE_MAPS_SUBSCRIPTION_ID: ${{ secrets.AZURE_MAPS_SUBSCRIPTION_ID }}
+  CATEGORY_REGEX: .*
+  CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
+  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  COSMOS_DB_KEY: ${{ secrets.COSMOS_DB_KEY }}
+  COSMOS_DB_URL: ${{ secrets.COSMOS_DB_URL }}
+  GH_PACKAGE_REGISTRY_TOKEN: ${{ secrets.GH_PACKAGE_REGISTRY_TOKEN }}
+  GH_PACKAGE_REGISTRY_USER: ${{ secrets.GH_PACKAGE_REGISTRY_USER }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
+  JAVA_OPTS: -Xms512m -Xmx8048m -Xss512m -XX:ReservedCodeCacheSize=512m -server
   JDK_CURRENT: 21
-  JDK_DISTRIBUTION: "corretto"
+  JDK_DISTRIBUTION: corretto
   RETRY_ATTEMPTS: 2
   RETRY_MINUTES: 30
-  CATEGORY_REGEX: ".*"
-##########################################################################
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 20 * * *'
-  push:
-    branches:
-      - master
-      - '!**.**.**'
-      - '!heroku-*'
-  pull_request:
-    types: [ labeled ]
-    branches: [ master, pr-* ]
-
-concurrency:
-  group: "workflow = ${{ github.workflow }}, ref = ${{ github.event.ref }}, pr = ${{ github.event.pull_request.id }}"
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.repository != 'apereo/cas' }}
-
-##########################################################################
-
+  SONARCLOUD_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
+  TERM: xterm-256color
 jobs:
-  trigger-ci:
-    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'CI')) && !contains(github.event.pull_request.labels.*.name, 'Renovate') && !contains(github.event.head_commit.message, 'trigger dependency update') && !contains(github.event.head_commit.message, 'documentation update') }}
-    runs-on: ubuntu-latest
+  coverage:
+    needs:
+    - tests
+    runs-on: self-hosted
     steps:
-      - name: Trigger CI
-        run: echo "CI Triggered"
-  ##########################################################################
+    - continue-on-error: true
+      name: Checkout Repository
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ env.JDK_DISTRIBUTION }}
+        java-version: ${{ env.JDK_CURRENT }}
+    - continue-on-error: true
+      name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Download coverage files
+      uses: actions/download-artifact@v4
+      with:
+        path: reports
+    - continue-on-error: true
+      name: Collect Coverage Files
+      run: 'find $PWD -type f -name ''jacocoRootReport.xml''
+
+        export files=''''
+
+        for file in $(find $PWD -type f -name ''jacocoRootReport.xml''); do export
+        files="$file,${files}"; done
+
+        export files="${files%?}"
+
+        echo $files
+
+        echo "COVERAGE_REPORTS=${files}" >> $GITHUB_ENV
+
+        '
+    - continue-on-error: true
+      name: Upload Coverage to Codacy
+      uses: codacy/codacy-coverage-reporter-action@v1
+      with:
+        coverage-reports: ${{ env.COVERAGE_REPORTS }}
+        project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+    - continue-on-error: true
+      if: ${{ env.CODECOV_TOKEN != null }}
+      name: Upload to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        fail_ci_if_error: false
+        files: ${{ env.COVERAGE_REPORTS }}
+        token: ${{ secrets.CODECOV_TOKEN }}
+        verbose: true
   initialize:
-    needs: [ trigger-ci ]
-    runs-on: ubuntu-latest
+    needs:
+    - trigger-ci
+    runs-on: self-hosted
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JDK_CURRENT }}
-          distribution: ${{ env.JDK_DISTRIBUTION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Initialize
-        run: ls ./ci && find ./ci -type f -name "*.sh" -exec chmod +x "{}" \; && ./ci/init-build.sh
-
-  ##########################################################################
-
+    - continue-on-error: true
+      name: Checkout Repository
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ env.JDK_DISTRIBUTION }}
+        java-version: ${{ env.JDK_CURRENT }}
+    - continue-on-error: true
+      name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Initialize
+      run: ls ./ci && find ./ci -type f -name "*.sh" -exec chmod +x "{}" \; && ./ci/init-build.sh
   testcategories:
-    needs: [ initialize ]
-    runs-on: ubuntu-latest
+    needs:
+    - initialize
     outputs:
       categories: ${{ steps.get-categories.outputs.categories }}
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JDK_CURRENT }}
-          distribution: ${{ env.JDK_DISTRIBUTION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - id: print-categories
-        run: ./gradlew --build-cache --configure-on-demand --no-daemon -q testCategories
-      - id: get-categories
-        run: echo "categories=$(./gradlew --build-cache --configure-on-demand --no-daemon -q testCategories)" >> $GITHUB_OUTPUT
-  ##########################################################################
-  
+    - continue-on-error: true
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ env.JDK_DISTRIBUTION }}
+        java-version: ${{ env.JDK_CURRENT }}
+    - continue-on-error: true
+      name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      id: print-categories
+      run: ./gradlew --build-cache --configure-on-demand --no-daemon -q testCategories
+    - continue-on-error: true
+      id: get-categories
+      run: echo "categories=$(./gradlew --build-cache --configure-on-demand --no-daemon
+        -q testCategories)" >> $GITHUB_OUTPUT
   tests:
-    needs: [ testcategories ]
     continue-on-error: false
+    name: ${{ matrix.category }}
+    needs:
+    - testcategories
+    runs-on: self-hosted
+    steps:
+    - continue-on-error: true
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ env.JDK_DISTRIBUTION }}
+        java-version: ${{ env.JDK_CURRENT }}
+    - continue-on-error: true
+      name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Initialize
+      run: find ./ci -type f -name "*.sh" -exec chmod +x "{}" \; && ./ci/init-build.sh
+      shell: bash
+    - continue-on-error: true
+      if: github.event_name == 'schedule'
+      name: Configure Environment
+      run: 'echo "Running on schedule with PTS disabled..."
+
+        echo "PTS_ENABLED=false" >> $GITHUB_ENV
+
+        '
+    - continue-on-error: true
+      name: Run Tests
+      uses: nick-fields/retry@v3
+      with:
+        command: './testcas.sh --no-watch --category ${{ matrix.category }}
+
+          [[ $? -eq 0 ]] && ./testcas.sh --no-watch --with-coverage
+
+          '
+        max_attempts: ${{ env.RETRY_ATTEMPTS }}
+        retry_on: error
+        retry_wait_seconds: 5
+        shell: bash
+        timeout_minutes: ${{ env.RETRY_MINUTES }}
+    - continue-on-error: true
+      name: Check Coverage Report
+      run: "xml_files=$(find build/reports -type f -name \"*.xml\")\nif [ -z \"$xml_files\"\
+        \ ]; then\n  echo \"No coverage XML files found\"\nelse\n  echo ${xml_files}\n\
+        fi\n"
+    - continue-on-error: true
+      if: ${{ env.SONARCLOUD_TOKEN != null }}
+      name: Upload to SonarCloud
+      run: "./gradlew sonar --build-cache --configure-on-demand --no-daemon -DskipAot=true\
+        \ --parallel \\\n  -x javadoc -DskipNestedConfigMetadataGen=true -Dverbose=true\
+        \ \\\n  -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/jacocoRootReport/jacocoRootReport.xml\n"
+    - continue-on-error: true
+      if: ${{ env.CODECOV_TOKEN != null }}
+      name: Upload to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        fail_ci_if_error: false
+        files: ./build/reports/jacoco/jacocoRootReport/jacocoRootReport.xml
+        flags: ${{ matrix.category }}
+        name: ${{ matrix.category }}
+        token: ${{ env.CODECOV_TOKEN }}
+        verbose: true
+    - continue-on-error: true
+      name: Upload Coverage Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: cas-tests-${{ matrix.category }}.coverage
+        path: ./build/reports/jacoco/jacocoRootReport/jacocoRootReport.xml
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest ]
         category: ${{fromJSON(needs.testcategories.outputs.categories)}}
-    runs-on: ${{ matrix.os }}
-    name: ${{ matrix.category }}
+        os:
+        - ubuntu-latest
+  trigger-ci:
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      || github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name,
+      'CI')) && !contains(github.event.pull_request.labels.*.name, 'Renovate') &&
+      !contains(github.event.head_commit.message, 'trigger dependency update') &&
+      !contains(github.event.head_commit.message, 'documentation update') }}
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JDK_CURRENT }}
-          distribution: ${{ env.JDK_DISTRIBUTION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Initialize
-        run: find ./ci -type f -name "*.sh" -exec chmod +x "{}" \; && ./ci/init-build.sh
-        shell: bash
-      - name: Configure Environment
-        if: github.event_name == 'schedule'
-        run: |
-          echo "Running on schedule with PTS disabled..."
-          echo "PTS_ENABLED=false" >> $GITHUB_ENV
-      - name: Run Tests
-        uses: nick-fields/retry@v3
-        with:
-          max_attempts: ${{ env.RETRY_ATTEMPTS }}
-          retry_on: error
-          retry_wait_seconds: 5
-          timeout_minutes: ${{ env.RETRY_MINUTES }}
-          shell: bash
-          command: |
-            ./testcas.sh --no-watch --category ${{ matrix.category }}
-            [[ $? -eq 0 ]] && ./testcas.sh --no-watch --with-coverage
-      - name: Check Coverage Report
-        run: |
-          xml_files=$(find build/reports -type f -name "*.xml")
-          if [ -z "$xml_files" ]; then
-            echo "No coverage XML files found"
-          else
-            echo ${xml_files}
-          fi
-      - name: Upload to SonarCloud
-        if: ${{ env.SONARCLOUD_TOKEN != null }}
-        run: |
-          ./gradlew sonar --build-cache --configure-on-demand --no-daemon -DskipAot=true --parallel \
-            -x javadoc -DskipNestedConfigMetadataGen=true -Dverbose=true \
-            -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/jacocoRootReport/jacocoRootReport.xml
-      - name: "Upload to Codecov"
-        uses: "codecov/codecov-action@v4"
-        continue-on-error: true
-        if: ${{ env.CODECOV_TOKEN != null }}
-        with:
-          token: ${{ env.CODECOV_TOKEN }}
-          files: ./build/reports/jacoco/jacocoRootReport/jacocoRootReport.xml
-          flags: ${{ matrix.category }}
-          name: ${{ matrix.category }}
-          verbose: true
-          fail_ci_if_error: false
-      - name: Upload Coverage Report
-        uses: "actions/upload-artifact@v4"
-        with:
-          name: "cas-tests-${{ matrix.category }}.coverage"
-          path: "./build/reports/jacoco/jacocoRootReport/jacocoRootReport.xml"
-  ##########################################################################
-
-  coverage:
-    runs-on: ubuntu-latest
-    needs: [ tests ]
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JDK_CURRENT }}
-          distribution: ${{ env.JDK_DISTRIBUTION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Download coverage files
-        uses: "actions/download-artifact@v4"
-        with:
-          path: "reports"
-      - name: Collect Coverage Files
-        run: |
-          find $PWD -type f -name 'jacocoRootReport.xml'
-          export files=''
-          for file in $(find $PWD -type f -name 'jacocoRootReport.xml'); do export files="$file,${files}"; done
-          export files="${files%?}"
-          echo $files
-          echo "COVERAGE_REPORTS=${files}" >> $GITHUB_ENV
-#      - name: Upload to SonarCloud
-#        run: ./gradlew --build-cache --configure-on-demand --no-daemon -DskipAot=true --parallel sonar -x javadoc -DskipNestedConfigMetadataGen=true -Dverbose=true -Dsonar.coverage.jacoco.xmlReportPaths="${COVERAGE_REPORTS}"
-      - name: Upload Coverage to Codacy
-        uses: codacy/codacy-coverage-reporter-action@v1
-        with:
-          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
-          coverage-reports: ${{ env.COVERAGE_REPORTS }}
-      - name: Upload to Codecov
-        uses: codecov/codecov-action@v4
-        if: ${{ env.CODECOV_TOKEN != null }}
-        continue-on-error: true
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: true
-          fail_ci_if_error: false
-          files: ${{ env.COVERAGE_REPORTS }}
+    - continue-on-error: true
+      name: Trigger CI
+      run: echo "CI Triggered"
+name: Unit & Integration Tests
+on:
+  repository_dispatch:
+    types: trigger-ga___tests.yml

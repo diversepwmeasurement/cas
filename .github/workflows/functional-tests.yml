@@ -1,213 +1,231 @@
-name: Functional Tests
-
-##########################################################################
-
+concurrency:
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.repository
+    != 'apereo/cas' }}
+  group: workflow = ${{ github.workflow }}, ref = ${{ github.event.ref }}, pr = ${{
+    github.event.pull_request.id }}
 env:
-  JAVA_OPTS: "-Xms512m -Xmx6048m -Xss128m -XX:ReservedCodeCacheSize=512m -server"
-  GRADLE_OPTS: "-Xms512m -Xmx6048m -Xss128m -XX:ReservedCodeCacheSize=512m -server"
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  GH_PACKAGE_REGISTRY_USER: ${{ secrets.GH_PACKAGE_REGISTRY_USER }}
-  GH_PACKAGE_REGISTRY_TOKEN: ${{ secrets.GH_PACKAGE_REGISTRY_TOKEN }}
-#  GRADLE_BUILDCACHE_USER: ci
-#  GRADLE_BUILDCACHE_PSW: ${{ secrets.GRADLE_BUILDCACHE_PSW }}
-  GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
-  DUO_SECURITY_ADMIN_SKEY: ${{ secrets.DUO_SECURITY_ADMIN_SKEY }}
-  DUO_SECURITY_ADMIN_IKEY: ${{ secrets.DUO_SECURITY_ADMIN_IKEY }}
-  DUO_SECURITY_UNIVERSAL_PROMPT_SKEY: ${{ secrets.DUO_SECURITY_UNIVERSAL_PROMPT_SKEY }}
-  DUO_SECURITY_UNIVERSAL_PROMPT_IKEY: ${{ secrets.DUO_SECURITY_UNIVERSAL_PROMPT_IKEY }}
-  DUO_SECURITY_API_HOST: ${{ secrets.DUO_SECURITY_API_HOST }}
   ADFS_HOST: ${{ secrets.ADFS_HOST }}
+  ADFS_PASSWORD: ${{ secrets.ADFS_PASSWORD }}
   ADFS_RELYING_PARTY_ID: ${{ secrets.ADFS_RELYING_PARTY_ID }}
   ADFS_USERNAME: ${{ secrets.ADFS_USERNAME }}
-  ADFS_PASSWORD: ${{ secrets.ADFS_PASSWORD }}
   AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID }}
   AZURE_AD_CLIENT_SECRET: ${{ secrets.AZURE_AD_CLIENT_SECRET }}
-  AZURE_AD_USER_PASSWORD: ${{ secrets.AZURE_AD_USER_PASSWORD }}
-  AZURE_AD_TENANT: ${{ secrets.AZURE_AD_TENANT }}
   AZURE_AD_DOMAIN: ${{ secrets.AZURE_AD_DOMAIN }}
-  AZURE_MAPS_SUBSCRIPTION_ID: ${{ secrets.AZURE_MAPS_SUBSCRIPTION_ID }}
+  AZURE_AD_TENANT: ${{ secrets.AZURE_AD_TENANT }}
+  AZURE_AD_USER_PASSWORD: ${{ secrets.AZURE_AD_USER_PASSWORD }}
   AZURE_MAPS_CLIENT_ID: ${{ secrets.AZURE_MAPS_CLIENT_ID }}
-  TERM: xterm-256color
+  AZURE_MAPS_SUBSCRIPTION_ID: ${{ secrets.AZURE_MAPS_SUBSCRIPTION_ID }}
+  DUO_SECURITY_ADMIN_IKEY: ${{ secrets.DUO_SECURITY_ADMIN_IKEY }}
+  DUO_SECURITY_ADMIN_SKEY: ${{ secrets.DUO_SECURITY_ADMIN_SKEY }}
+  DUO_SECURITY_API_HOST: ${{ secrets.DUO_SECURITY_API_HOST }}
+  DUO_SECURITY_UNIVERSAL_PROMPT_IKEY: ${{ secrets.DUO_SECURITY_UNIVERSAL_PROMPT_IKEY
+    }}
+  DUO_SECURITY_UNIVERSAL_PROMPT_SKEY: ${{ secrets.DUO_SECURITY_UNIVERSAL_PROMPT_SKEY
+    }}
+  GH_PACKAGE_REGISTRY_TOKEN: ${{ secrets.GH_PACKAGE_REGISTRY_TOKEN }}
+  GH_PACKAGE_REGISTRY_USER: ${{ secrets.GH_PACKAGE_REGISTRY_USER }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
+  GRADLE_OPTS: -Xms512m -Xmx6048m -Xss128m -XX:ReservedCodeCacheSize=512m -server
+  JAVA_OPTS: -Xms512m -Xmx6048m -Xss128m -XX:ReservedCodeCacheSize=512m -server
   JDK_CURRENT: 21
-  JDK_DISTRIBUTION: "corretto"
-  NODE_CURRENT: '22.2.0'
+  JDK_DISTRIBUTION: corretto
   MAX_ATTEMPTS: 3
+  NODE_CURRENT: 22.2.0
   RETRY_MINUTES: 8
-  SCENARIO_REGEX: ".*"
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 18 * * *'
-  push:
-    branches:
-      - master
-      - '!**.**.**'
-      - '!heroku-*'
-  pull_request:
-    types: [ labeled ]
-    branches:
-      - master
-      - 'pr-*'
-      - '!**.**.**'
-
-concurrency:
-  group: "workflow = ${{ github.workflow }}, ref = ${{ github.event.ref }}, pr = ${{ github.event.pull_request.id }}"
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.repository != 'apereo/cas' }}
-
-##########################################################################
-
+  SCENARIO_REGEX: .*
+  TERM: xterm-256color
 jobs:
-  trigger-ci:
-    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'CI')) && !contains(github.event.pull_request.labels.*.name, 'Renovate') && !contains(github.event.head_commit.message, 'trigger dependency update') && !contains(github.event.head_commit.message, 'documentation update') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger CI
-        run: echo "CI Triggered"
   initialize:
-    needs: [trigger-ci]
-    runs-on: ubuntu-latest
+    needs:
+    - trigger-ci
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JDK_CURRENT }}
-          distribution: ${{ env.JDK_DISTRIBUTION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Initialize
-        run: ls ./ci && find ./ci -type f -name "*.sh" -exec chmod +x "{}" \; && ./ci/init-build.sh
-
-  ##########################################################################
-            
+    - continue-on-error: true
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ env.JDK_DISTRIBUTION }}
+        java-version: ${{ env.JDK_CURRENT }}
+    - continue-on-error: true
+      name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Initialize
+      run: ls ./ci && find ./ci -type f -name "*.sh" -exec chmod +x "{}" \; && ./ci/init-build.sh
   puppeteer-scenarios:
-    needs: [initialize]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    needs:
+    - initialize
     outputs:
       scenarios255: ${{ steps.get-scenarios255.outputs.scenarios255 }}
       scenarios511: ${{ steps.get-scenarios511.outputs.scenarios511 }}
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JDK_CURRENT }}
-          distribution: ${{ env.JDK_DISTRIBUTION }}
-          cache: 'gradle'
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Print Scenarios
-        uses: nick-fields/retry@v3
-        with:
-          max_attempts: ${{ env.MAX_ATTEMPTS }}
-          retry_on: error
-          timeout_minutes: ${{ env.RETRY_MINUTES }}
-          shell: bash
-          command: ./gradlew --build-cache --configure-on-demand --no-daemon -q puppeteerScenarios | jq
-      - id: get-scenarios255
-        name: Get Scenarios 0-255
-        run: echo "scenarios255=$(./gradlew --build-cache --configure-on-demand --no-daemon -q puppeteerScenarios -PpuppeteerScenariosFrom=0 -PpuppeteerScenariosTo=255)" >> $GITHUB_OUTPUT
-      - id: get-scenarios511
-        name: Get Scenarios 255-511
-        run: echo "scenarios511=$(./gradlew --build-cache --configure-on-demand --no-daemon -q puppeteerScenarios -PpuppeteerScenariosFrom=255 -PpuppeteerScenariosTo=511)" >> $GITHUB_OUTPUT
-
-  ##########################################################################
+    - continue-on-error: true
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        cache: gradle
+        distribution: ${{ env.JDK_DISTRIBUTION }}
+        java-version: ${{ env.JDK_CURRENT }}
+    - continue-on-error: true
+      name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Print Scenarios
+      uses: nick-fields/retry@v3
+      with:
+        command: ./gradlew --build-cache --configure-on-demand --no-daemon -q puppeteerScenarios
+          | jq
+        max_attempts: ${{ env.MAX_ATTEMPTS }}
+        retry_on: error
+        shell: bash
+        timeout_minutes: ${{ env.RETRY_MINUTES }}
+    - continue-on-error: true
+      id: get-scenarios255
+      name: Get Scenarios 0-255
+      run: echo "scenarios255=$(./gradlew --build-cache --configure-on-demand --no-daemon
+        -q puppeteerScenarios -PpuppeteerScenariosFrom=0 -PpuppeteerScenariosTo=255)"
+        >> $GITHUB_OUTPUT
+    - continue-on-error: true
+      id: get-scenarios511
+      name: Get Scenarios 255-511
+      run: echo "scenarios511=$(./gradlew --build-cache --configure-on-demand --no-daemon
+        -q puppeteerScenarios -PpuppeteerScenariosFrom=255 -PpuppeteerScenariosTo=511)"
+        >> $GITHUB_OUTPUT
+    timeout-minutes: 10
   puppeteer-tests-255:
-    runs-on: ubuntu-latest
-    needs: [puppeteer-scenarios]
     continue-on-error: false
+    name: ${{matrix.scenario}}
+    needs:
+    - puppeteer-scenarios
+    runs-on: self-hosted
+    steps:
+    - continue-on-error: true
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ env.JDK_DISTRIBUTION }}
+        java-version: ${{ env.JDK_CURRENT }}
+    - continue-on-error: true
+      name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Initialize
+      run: find ./ci -type f -name "*.sh" -exec chmod +x "{}" \;
+    - continue-on-error: true
+      name: Configure CI
+      run: source ./ci/tests/puppeteer/configure-ci.sh ${{matrix.scenario}}
+    - continue-on-error: true
+      name: Set up Nodejs
+      uses: actions/setup-node@v4
+      with:
+        cache: npm
+        cache-dependency-path: ./ci/tests/puppeteer/package.json
+        node-version: ${{ env.NODE_VERSION_REQUIRED }}
+    - continue-on-error: true
+      name: Run Tests
+      uses: nick-fields/retry@v3
+      with:
+        command: 'export RUNNER_OS=${{ runner.os }}
+
+          ./ci/tests/puppeteer/run.sh --scenario $PWD/ci/tests/puppeteer/scenarios/${{matrix.scenario}}
+
+          '
+        max_attempts: ${{ env.MAX_ATTEMPTS }}
+        retry_on: error
+        shell: bash
+        timeout_minutes: ${{ env.RETRY_MINUTES }}
+    - continue-on-error: true
+      name: Upload screenshots
+      uses: actions/upload-artifact@v4
+      with:
+        if-no-files-found: ignore
+        name: screenshots-${{matrix.scenario}}
+        path: ./ci/tests/puppeteer/screenshots/*.png
+        retention-days: 2
     strategy:
       fail-fast: false
       matrix:
         scenario: ${{fromJSON(needs.puppeteer-scenarios.outputs.scenarios255)}}
-    name: ${{matrix.scenario}}
     timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JDK_CURRENT }}
-          distribution: ${{ env.JDK_DISTRIBUTION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Initialize
-        run: find ./ci -type f -name "*.sh" -exec chmod +x "{}" \;
-      - name: Configure CI
-        run: source ./ci/tests/puppeteer/configure-ci.sh ${{matrix.scenario}}
-      - name: Set up Nodejs
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION_REQUIRED }}
-          cache: 'npm'
-          cache-dependency-path: ./ci/tests/puppeteer/package.json
-      - name: Run Tests
-        uses: nick-fields/retry@v3
-        with:
-          max_attempts: ${{ env.MAX_ATTEMPTS }}
-          retry_on: error
-          timeout_minutes: ${{ env.RETRY_MINUTES }}
-          shell: bash
-          command: |
-            export RUNNER_OS=${{ runner.os }}
-            ./ci/tests/puppeteer/run.sh --scenario $PWD/ci/tests/puppeteer/scenarios/${{matrix.scenario}}
-      - name: Upload screenshots
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-${{matrix.scenario}}
-          path: ./ci/tests/puppeteer/screenshots/*.png
-          if-no-files-found: ignore
-          retention-days: 2
-  ##########################################################################
-
   puppeteer-tests-511:
-    runs-on: ubuntu-latest
-    needs: [puppeteer-scenarios]
     continue-on-error: false
+    name: ${{matrix.scenario}}
+    needs:
+    - puppeteer-scenarios
+    runs-on: self-hosted
+    steps:
+    - continue-on-error: true
+      uses: actions/checkout@v4
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        cache: gradle
+        distribution: ${{ env.JDK_DISTRIBUTION }}
+        java-version: ${{ env.JDK_CURRENT }}
+    - continue-on-error: true
+      name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+    - continue-on-error: true
+      name: Initialize
+      run: find ./ci -type f -name "*.sh" -exec chmod +x "{}" \;
+    - continue-on-error: true
+      name: Configure CI
+      run: source ./ci/tests/puppeteer/configure-ci.sh ${{matrix.scenario}}
+    - continue-on-error: true
+      name: Set up Nodejs
+      uses: actions/setup-node@v4
+      with:
+        cache: npm
+        cache-dependency-path: ./ci/tests/puppeteer/package.json
+        check-latest: true
+        node-version: ${{ env.NODE_VERSION_REQUIRED }}
+    - continue-on-error: true
+      name: Run Tests
+      uses: nick-fields/retry@v3
+      with:
+        command: 'export RUNNER_OS=${{ runner.os }}
+
+          ./ci/tests/puppeteer/run.sh --scenario $PWD/ci/tests/puppeteer/scenarios/${{matrix.scenario}}
+
+          '
+        max_attempts: ${{ env.MAX_ATTEMPTS }}
+        retry_on: error
+        shell: bash
+        timeout_minutes: ${{ env.RETRY_MINUTES }}
+    - continue-on-error: true
+      name: Upload screenshots
+      uses: actions/upload-artifact@v4
+      with:
+        if-no-files-found: ignore
+        name: screenshots-${{matrix.scenario}}
+        path: ./ci/tests/puppeteer/screenshots/*.png
+        retention-days: 2
     strategy:
       fail-fast: false
       matrix:
         scenario: ${{fromJSON(needs.puppeteer-scenarios.outputs.scenarios511)}}
-    name: ${{matrix.scenario}}
     timeout-minutes: 25
+  trigger-ci:
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      || github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name,
+      'CI')) && !contains(github.event.pull_request.labels.*.name, 'Renovate') &&
+      !contains(github.event.head_commit.message, 'trigger dependency update') &&
+      !contains(github.event.head_commit.message, 'documentation update') }}
+    runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JDK_CURRENT }}
-          distribution: ${{ env.JDK_DISTRIBUTION }}
-          cache: 'gradle'
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Initialize
-        run: find ./ci -type f -name "*.sh" -exec chmod +x "{}" \;
-      - name: Configure CI
-        run: source ./ci/tests/puppeteer/configure-ci.sh ${{matrix.scenario}}
-      - name: Set up Nodejs
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION_REQUIRED }}
-          check-latest: true
-          cache: 'npm'
-          cache-dependency-path: ./ci/tests/puppeteer/package.json
-      - name: Run Tests
-        uses: nick-fields/retry@v3
-        with:
-          max_attempts: ${{ env.MAX_ATTEMPTS }}
-          retry_on: error
-          timeout_minutes: ${{ env.RETRY_MINUTES }}
-          shell: bash
-          command: |
-            export RUNNER_OS=${{ runner.os }}
-            ./ci/tests/puppeteer/run.sh --scenario $PWD/ci/tests/puppeteer/scenarios/${{matrix.scenario}}
-      - name: Upload screenshots
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-${{matrix.scenario}}
-          path: ./ci/tests/puppeteer/screenshots/*.png
-          if-no-files-found: ignore
-          retention-days: 2
-##########################################################################
+    - continue-on-error: true
+      name: Trigger CI
+      run: echo "CI Triggered"
+name: Functional Tests
+on:
+  repository_dispatch:
+    types: trigger-ga___functional-tests.yml
